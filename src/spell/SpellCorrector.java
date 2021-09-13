@@ -2,7 +2,6 @@ package spell;
 
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.util.*;
 
 public class SpellCorrector implements ISpellCorrector {
@@ -13,7 +12,7 @@ public class SpellCorrector implements ISpellCorrector {
     }
 
     @Override
-    public void useDictionary(String dictionaryFileName) throws IOException {
+    public void useDictionary(String dictionaryFileName) {
         try {
             File file = new File(dictionaryFileName);
             Scanner reader = new Scanner(file);
@@ -43,28 +42,11 @@ public class SpellCorrector implements ISpellCorrector {
 
     private String findSimilarWord(String inputWord) {
         ArrayList<String> suggestions = new ArrayList<>();
-        String[] dictionaryWords = trie.toString().split("\\s+");
-        checkEditDistance(suggestions, dictionaryWords, inputWord, 1);
+        getByEditDistance(suggestions, inputWord, 1);
 
         if (suggestions.size() == 0) {
-            // Optimization
-            ArrayList<String> dictionaryWordsList = new ArrayList<>();
-            int minLength = inputWord.length() - 2;
-            int maxLength = inputWord.length() + 2;
-            int test = 0;
-            for (String dictionaryWord : dictionaryWords) {
-                if (dictionaryWord.length() <= maxLength || dictionaryWord.length() >= minLength) {
-                    dictionaryWordsList.add(dictionaryWord);
-                }
-                test++;
-                if (test == 10000) {
-                    break;
-                }
-            }
-            dictionaryWords = dictionaryWordsList.toArray(new String[dictionaryWordsList.size()]);
-            System.out.println(dictionaryWords.length);
             ArrayList<String> suggestionsDistance2 = new ArrayList<>();
-            checkEditDistance(suggestionsDistance2, dictionaryWords, inputWord, 2);
+            getByEditDistance(suggestionsDistance2, inputWord, 2);
             if (suggestionsDistance2.size() == 0) {
                 return null;
             } else if (suggestionsDistance2.size() == 1) {
@@ -120,139 +102,80 @@ public class SpellCorrector implements ISpellCorrector {
         return wordToSuggest;
     }
 
-    private void checkEditDistance(
+    private void getByEditDistance(
         ArrayList<String> suggestions,
-        String[] dictionaryWords,
         String inputWord,
-        int deletionDistance
+        int editDistance
     ) {
-        for (String dictionaryWord : dictionaryWords) {
-            String[] deletionDistanceWords = getDeletionDistanceWords(dictionaryWord);
-            String[] transpositionDistanceWords = getTranspositionDistanceWords(dictionaryWord);
-            String[] alterationDistanceWords = getAlterationDistanceWords(dictionaryWord);
-            String[] insertionDistanceWords = getInsertionDistanceWords(dictionaryWord);
+        HashSet<String> generatedStrings = new HashSet<>();
+        getDeletionDistanceWords(inputWord, generatedStrings);
+        getTranspositionDistanceWords(inputWord, generatedStrings);
+        getAlterationDistanceWords(inputWord, generatedStrings);
+        getInsertionDistanceWords(inputWord, generatedStrings);
 
-            if (deletionDistance == 1) {
-                if (findMatch(deletionDistanceWords, inputWord)) {
-                    suggestions.add(dictionaryWord);
+        for (String generatedString : generatedStrings) {
+            if (trie.find(generatedString) != null) {
+                suggestions.add(generatedString);
+            }
+        }
+
+        if (editDistance == 2) {
+            HashSet<String> generatedStringsDistance1 = new HashSet<>(generatedStrings);
+            for (String generatedStringDistance1 : generatedStringsDistance1) {
+                getDeletionDistanceWords(generatedStringDistance1, generatedStrings);
+                getTranspositionDistanceWords(generatedStringDistance1, generatedStrings);
+                getAlterationDistanceWords(generatedStringDistance1, generatedStrings);
+                getInsertionDistanceWords(generatedStringDistance1, generatedStrings);
+            }
+            for (String generatedString : generatedStrings) {
+                if (trie.find(generatedString) != null) {
+                    suggestions.add(generatedString);
                 }
-                if (findMatch(transpositionDistanceWords, inputWord)) {
-                    suggestions.add(dictionaryWord);
-                }
-                if (findMatch(alterationDistanceWords, inputWord)) {
-                    suggestions.add(dictionaryWord);
-                }
-                if (findMatch(insertionDistanceWords, inputWord)) {
-                    suggestions.add(dictionaryWord);
-                }
-            } else {
-                checkEditDistance2Words(suggestions, dictionaryWord, deletionDistanceWords, inputWord);
-                checkEditDistance2Words(suggestions, dictionaryWord, transpositionDistanceWords, inputWord);
-                checkEditDistance2Words(suggestions, dictionaryWord, alterationDistanceWords, inputWord);
-                checkEditDistance2Words(suggestions, dictionaryWord, insertionDistanceWords, inputWord);
             }
         }
     }
 
-    private void checkEditDistance2Words(
-        ArrayList<String> suggestions,
-        String dictionaryWord,
-        String[] wordsToCheck,
-        String inputWord
-    ) {
-        if (wordsToCheck == null) {
+    private void getDeletionDistanceWords(String wordToGenerateFrom, HashSet<String> generatedStrings) {
+        if (wordToGenerateFrom.length() <= 1) {
             return;
         }
-        for (String wordToCheck : wordsToCheck) {
-            String[] deletionDistance2Words = getDeletionDistanceWords(wordToCheck);
-            if (findMatch(deletionDistance2Words, inputWord)) {
-                suggestions.add(dictionaryWord);
-            }
-            String[] transpositionDistance2Words = getTranspositionDistanceWords(wordToCheck);
-            if (findMatch(transpositionDistance2Words, inputWord)) {
-                suggestions.add(dictionaryWord);
-            }
-            String[] alterationDistance2Words = getAlterationDistanceWords(wordToCheck);
-            if (findMatch(alterationDistance2Words, inputWord)) {
-                suggestions.add(dictionaryWord);
-            }
-            String[] insertionDistance2Words = getInsertionDistanceWords(wordToCheck);
-            if (findMatch(insertionDistance2Words, inputWord)) {
-                suggestions.add(dictionaryWord);
-            }
+        for (int i = 0; i < wordToGenerateFrom.length(); i++) {
+            String suggestion = wordToGenerateFrom.substring(0, i) + wordToGenerateFrom.substring(i + 1);
+            generatedStrings.add(suggestion);
         }
     }
 
-    private boolean findMatch(String[] generatedStrings, String inputString) {
-        if (generatedStrings == null) {
-            return false;
+    private void getTranspositionDistanceWords(String wordToGenerateFrom, HashSet<String> generatedStrings) {
+        if (wordToGenerateFrom.length() <= 1) {
+            return;
         }
-        for (String generatedString : generatedStrings) {
-            if (Objects.equals(generatedString, inputString)) {
-                return true;
-            }
+        for (int i = 0; i < wordToGenerateFrom.length() - 1; i++) {
+            String swappedChars = wordToGenerateFrom.substring(i+1, i+2) + wordToGenerateFrom.charAt(i);
+            String suggestion = wordToGenerateFrom.substring(0, i) + swappedChars + wordToGenerateFrom.substring(i + 2);
+            generatedStrings.add(suggestion);
         }
-
-        return false;
     }
 
-    private String[] getDeletionDistanceWords(String dictionaryWord) {
-        if (dictionaryWord.length() <= 1) {
-            return null;
-        }
-        String[] suggestions = new String[dictionaryWord.length()];
-        for (int i = 0; i < dictionaryWord.length(); i++) {
-            String suggestion = dictionaryWord.substring(0, i) + dictionaryWord.substring(i + 1);
-            suggestions[i] = suggestion;
-        }
-
-        return suggestions;
-    }
-
-    private String[] getTranspositionDistanceWords(String dictionaryWord) {
-        if (dictionaryWord.length() <= 1) {
-            return null;
-        }
-        String[] suggestions = new String[dictionaryWord.length() - 1];
-        for (int i = 0; i < dictionaryWord.length() - 1; i++) {
-            String swappedChars = dictionaryWord.substring(i+1, i+2) + dictionaryWord.charAt(i);
-            String suggestion = dictionaryWord.substring(0, i) + swappedChars + dictionaryWord.substring(i + 2);
-            suggestions[i] = suggestion;
-        }
-
-        return suggestions;
-    }
-
-    private String[] getAlterationDistanceWords(String dictionaryWord) {
-        String[] suggestions = new String[dictionaryWord.length() * 25];
-        int numSuggestions = 0;
-        for (int w = 0; w < dictionaryWord.length(); w++) {
+    private void getAlterationDistanceWords(String wordToGenerateFrom, HashSet<String> generatedStrings) {
+        for (int w = 0; w < wordToGenerateFrom.length(); w++) {
             for (int c = 0; c < 26; c++) {
                 char replacementChar = (char)('a' + c);
-                if (dictionaryWord.codePointAt(w) == replacementChar) {
+                if (wordToGenerateFrom.codePointAt(w) == replacementChar) {
                     continue;
                 }
-                String suggestion = dictionaryWord.substring(0, w) + replacementChar + dictionaryWord.substring(w + 1);
-                suggestions[numSuggestions] = suggestion;
-                numSuggestions++;
+                String suggestion = wordToGenerateFrom.substring(0, w) + replacementChar + wordToGenerateFrom.substring(w + 1);
+                generatedStrings.add(suggestion);
             }
         }
-
-        return suggestions;
     }
 
-    private String[] getInsertionDistanceWords(String dictionaryWord) {
-        String[] suggestions = new String[(dictionaryWord.length() + 1) * 26];
-        int numSuggestions = 0;
-        for (int w = 0; w < dictionaryWord.length() + 1; w++) {
+    private void getInsertionDistanceWords(String wordToGenerateFrom, HashSet<String> generatedStrings) {
+        for (int w = 0; w < wordToGenerateFrom.length() + 1; w++) {
             for (int c = 0; c < 26; c++) {
                 char insertionChar = (char)('a' + c);
-                String suggestion = dictionaryWord.substring(0, w) + insertionChar + dictionaryWord.substring(w);
-                suggestions[numSuggestions] = suggestion;
-                numSuggestions++;
+                String suggestion = wordToGenerateFrom.substring(0, w) + insertionChar + wordToGenerateFrom.substring(w);
+                generatedStrings.add(suggestion);
             }
         }
-
-        return suggestions;
     }
 }
